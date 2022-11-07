@@ -48,6 +48,25 @@ class Estimator(object):
 
         rows = self.belief.numRows
         cols = self.belief.numCols
+
+        for i in range(len(self.particles)):
+            particle = self.particles[i]
+            y = particle // cols
+            x = particle % cols
+            moving_prob = [self.transProb[((x, y), (x, y))] if ((x, y), (x, y)) in self.transProb else 0,
+                        self.transProb[((x, y), (x+1, y))] if ((x, y), (x+1, y)) in self.transProb else 0,
+                        self.transProb[((x, y), (x-1, y))] if ((x, y), (x-1, y)) in self.transProb else 0,
+                        self.transProb[((x, y), (x, y+1))] if ((x, y), (x, y+1)) in self.transProb else 0,
+                        self.transProb[((x, y), (x, y-1))] if ((x, y), (x, y-1)) in self.transProb else 0,
+                    self.transProb[((x, y), (x+1, y+1))] if ((x, y), (x+1, y+1)) in self.transProb else 0,
+                    self.transProb[((x, y), (x-1, y+1))] if ((x, y), (x-1, y+1)) in self.transProb else 0,
+                    self.transProb[((x, y), (x+1, y-1))] if ((x, y), (x+1, y-1)) in self.transProb else 0,
+                    self.transProb[((x, y), (x-1, y-1))] if ((x, y), (x-1, y-1)) in self.transProb else 0]
+            total = sum(moving_prob)
+            moving_prob = [prob/total for prob in moving_prob]
+            self.particles[i] = random.choice(
+                [(x, y), (x+1, y), (x-1, y), (x, y+1), (x, y-1)], p=moving_prob, k=1)
+
         weights = [0 for k in range(cols*rows)]
         for particle in self.particles:
             y = util.rowToY(particle // cols)
