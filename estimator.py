@@ -13,7 +13,7 @@ class Estimator(object):
     def __init__(self, numRows: int, numCols: int):
         self.belief = util.Belief(numRows, numCols)
         self.transProb = util.loadTransProb()
-        self.particles = [i*numCols + j for j in range(numCols) for i in range(numRows) for k in range(2)]
+        self.particles = [i*numCols + j for k in range(1) for j in range(numCols) for i in range(numRows)]
 
     ##################################################################################
     # [ Estimation Problem ]
@@ -42,31 +42,16 @@ class Estimator(object):
     def estimate(self, posX: float, posY: float, observedDist: float, isParked: bool) -> None:
 
         # BEGIN_YOUR_CODE
-
         rows = self.belief.numRows
         cols = self.belief.numCols
+        weights = []
 
-        weights = [0 for k in range(len(self.particles))]
-        for particle in self.particles:
-            y = util.rowToY(particle // cols)
-            x = util.colToX(particle % cols)
-            estimated_dist = math.sqrt(
-                (x-posX) * (x-posX) + (y-posY) * (y-posY))
-            weights[particle] = 1 / abs(estimated_dist - observedDist)
-
-        for r in range(rows):
-            for c in range(cols):
-                self.belief.setProb(r, c, 0)
-
-        self.particles = random.choices(self.particles, weights, k=len(self.particles))
-        for particle in self.particles:
-            r = particle // cols
-            c = particle % cols
-            self.belief.addProb(r, c, 1)
-        self.belief.normalize()
-
-        if not isParked:
-            for i in range(len(self.particles)):
+        if not isParked:            
+            init_weights = [self.belief.grid[i][j] for i in range(rows) for j in range(cols)]
+            init_particles = [i*cols + j for i in range(rows) for j in range(cols)]
+            self.particles = random.choices(init_particles, init_weights, k=len(self.particles))
+            i = 0
+            while (i < len(self.particles)):
                 particle = self.particles[i]
                 y = particle // cols
                 x = particle % cols
@@ -79,19 +64,50 @@ class Estimator(object):
                                 self.transProb[((y, x), (y-1, x+1))] if ((y, x), (y-1, x+1)) in self.transProb else 0,
                                 self.transProb[((y, x), (y, x+1))] if ((y, x), (y, x+1)) in self.transProb else 0,
                                 self.transProb[((y, x), (y+1, x+1))] if ((y, x), (y+1, x+1)) in self.transProb else 0]
+
                 total = sum(moving_prob)
                 if total == 0:
+                    self.particles.remove(particle)
                     # for i in [-1, 0, 1]:
                     #     for j in [-1, 0, 1]:
                     #         if x+i >= 0 and x+i < cols and y+j >= 0 and y+j < rows:
                     #             moving_prob[(i+1)*3+(j+1)] = 1
                     #             total += 1
-                    moving_prob[4] = 1
+                    # moving_prob[4] = 1
                 else:
                     moving_prob = [prob/total for prob in moving_prob]
-                self.particles[i] = random.choices(
-                    [x-1+(y-1)*cols, x-1+y*cols, x-1+(y+1)*cols, x+(y-1)*cols, x+y*cols, x+(y+1)*cols, x+1+(y-1)*cols, x+1+y*cols, x+1+(y+1)*cols], moving_prob, k=1)[0]
-                    # [y-1+(x-1)*cols, y+(x-1)*cols, y+1+(x-1)*cols, y-1+x*cols, y+x*cols, y+1+x*cols, y-1+(x+1)*cols, y+(x+1)*cols, y+1+(x+1)*cols], moving_prob, k=1)[0]
+                    self.particles[i] = random.choices([x-1+(y-1)*cols, x-1+y*cols, x-1+(y+1)*cols, x+(y-1)*cols, x+y*cols, x+(y+1)*cols, x+1+(y-1)*cols, x+1+y*cols, x+1+(y+1)*cols], moving_prob, k=1)[0]                
+                        # [y-1+(x-1)*cols, y+(x-1)*cols, y+1+(x-1)*cols, y-1+x*cols, y+x*cols, y+1+x*cols, y-1+(x+1)*cols, y+(x+1)*cols, y+1+(x+1)*cols], moving_prob, k=1)[0]
+                    y = util.rowToY(y)
+                    x = util.colToX(x)
+                    estimated_dist = math.sqrt((x-posX) * (x-posX) + (y-posY) * (y-posY))
+                    weights.append(pdf(estimated_dist, Const.SONAR_STD, observedDist))
+                    i += 1
+        else:
+            i = 0
+            while (i < len(self.particles)):
+                particle = self.particles[i]
+                y = particle // cols
+                x = particle % cols
+                # if ((y, x), (y, x)) not in self.transProb or self.transProb[((y, x), (y, x))] == 0:
+                #     self.particles.remove(particle)
+                # else:
+                y = util.rowToY(y)
+                x = util.colToX(x)
+                estimated_dist = math.sqrt((x-posX) * (x-posX) + (y-posY) * (y-posY))
+                weights.append(pdf(estimated_dist, Const.SONAR_STD, observedDist))
+                i += 1
+
+        for r in range(rows):
+            for c in range(cols):
+                self.belief.setProb(r, c, 0)
+
+        self.particles = random.choices(self.particles, weights, k=len(self.particles))
+        for particle in self.particles:
+            r = particle // cols
+            c = particle % cols
+            self.belief.addProb(r, c, 1)
+        self.belief.normalize()
 
         # END_YOUR_CODE
         return
