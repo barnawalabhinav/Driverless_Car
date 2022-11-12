@@ -13,7 +13,8 @@ class Estimator(object):
     def __init__(self, numRows: int, numCols: int):
         self.belief = util.Belief(numRows, numCols)
         self.transProb = util.loadTransProb()
-        self.particles = [i*numCols + j for k in range(1) for j in range(numCols) for i in range(numRows)]
+        self.factor = 2
+        self.particles = [i*numCols + j for _ in range(self.factor) for j in range(numCols) for i in range(numRows)]
 
     ##################################################################################
     # [ Estimation Problem ]
@@ -47,12 +48,12 @@ class Estimator(object):
         weights = []
 
         if not isParked:            
-            init_weights = [self.belief.grid[i][j] for i in range(rows) for j in range(cols)]
-            init_particles = [i*cols + j for i in range(rows) for j in range(cols)]
-            self.particles = random.choices(init_particles, init_weights, k=len(self.particles))
+            init_weights = [self.belief.grid[i][j] for _ in range(self.factor) for i in range(rows) for j in range(cols)]
+            init_particles = [i*cols + j for _ in range(self.factor) for i in range(rows) for j in range(cols)]
+            particles = random.choices(init_particles, init_weights, k=len(init_particles))
             i = 0
-            while (i < len(self.particles)):
-                particle = self.particles[i]
+            while (i < len(particles)):
+                particle = particles[i]
                 y = particle // cols
                 x = particle % cols
                 moving_prob = [ self.transProb[((y, x), (y-1, x-1))] if ((y, x), (y-1, x-1)) in self.transProb else 0,
@@ -67,7 +68,7 @@ class Estimator(object):
 
                 total = sum(moving_prob)
                 if total == 0:
-                    self.particles.remove(particle)
+                    particles.remove(particle)
                     # for i in [-1, 0, 1]:
                     #     for j in [-1, 0, 1]:
                     #         if x+i >= 0 and x+i < cols and y+j >= 0 and y+j < rows:
@@ -76,7 +77,7 @@ class Estimator(object):
                     # moving_prob[4] = 1
                 else:
                     moving_prob = [prob/total for prob in moving_prob]
-                    self.particles[i] = random.choices([x-1+(y-1)*cols, x-1+y*cols, x-1+(y+1)*cols, x+(y-1)*cols, x+y*cols, x+(y+1)*cols, x+1+(y-1)*cols, x+1+y*cols, x+1+(y+1)*cols], moving_prob, k=1)[0]                
+                    particles[i] = random.choices([x-1+(y-1)*cols, x-1+y*cols, x-1+(y+1)*cols, x+(y-1)*cols, x+y*cols, x+(y+1)*cols, x+1+(y-1)*cols, x+1+y*cols, x+1+(y+1)*cols], moving_prob, k=1)[0]                
                         # [y-1+(x-1)*cols, y+(x-1)*cols, y+1+(x-1)*cols, y-1+x*cols, y+x*cols, y+1+x*cols, y-1+(x+1)*cols, y+(x+1)*cols, y+1+(x+1)*cols], moving_prob, k=1)[0]
                     y = util.rowToY(y)
                     x = util.colToX(x)
@@ -85,12 +86,13 @@ class Estimator(object):
                     i += 1
         else:
             i = 0
-            while (i < len(self.particles)):
-                particle = self.particles[i]
+            particles = self.particles
+            while (i < len(particles)):
+                particle = particles[i]
                 y = particle // cols
                 x = particle % cols
                 # if ((y, x), (y, x)) not in self.transProb or self.transProb[((y, x), (y, x))] == 0:
-                #     self.particles.remove(particle)
+                #     particles.remove(particle)
                 # else:
                 y = util.rowToY(y)
                 x = util.colToX(x)
@@ -102,12 +104,17 @@ class Estimator(object):
             for c in range(cols):
                 self.belief.setProb(r, c, 0)
 
-        self.particles = random.choices(self.particles, weights, k=len(self.particles))
-        for particle in self.particles:
+        particles = random.choices(particles, weights, k=len(particles))
+        for particle in particles:
             r = particle // cols
             c = particle % cols
             self.belief.addProb(r, c, 1)
         self.belief.normalize()
+
+        print(len(particles))
+
+        if isParked:
+            self.particles = particles
 
         # END_YOUR_CODE
         return
