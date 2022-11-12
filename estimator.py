@@ -111,8 +111,6 @@ class Estimator(object):
             self.belief.addProb(r, c, 1)
         self.belief.normalize()
 
-        print(len(particles))
-
         if isParked:
             self.particles = particles
 

@@ -5,6 +5,7 @@ purposes. The Driverless Car project was developed at Stanford, primarily by
 Chris Piech (piech@cs.stanford.edu). It was inspired by the Pacman projects.
 '''
 import util
+import time
 import itertools
 from turtle import Vec2D
 from engine.const import Const
@@ -76,7 +77,7 @@ class IntelligentDriver(Junior):
 
         for node in nodes:
             x, y = node[0], node[1]
-            adjNodes = [(x, y-1), (x, y+1), (x-1, y), (x+1, y)]
+            adjNodes = [(x, y-1), (x, y+1), (x-1, y), (x+1, y), (x+1,y+1), (x-1,y+1), (x+1,y-1), (x-1,y-1)]
             
             # only keep allowed (within boundary) adjacent nodes
             adjacentNodes = []
@@ -89,6 +90,97 @@ class IntelligentDriver(Junior):
                 edges.append((node, tile))
                 edges.append((tile, node))
         return Graph(nodes, edges)
+
+    def modifyWorldGraph(self, beliefOfOtherCars: list):
+        markedNodes = {}
+        for carNum in range(len(beliefOfOtherCars)):
+            grid = beliefOfOtherCars[carNum].grid
+            for row in range(len(grid)):
+                for col in range(len(grid[row])):
+                    node = (row, col)
+                    if grid[row][col] > 0.25:
+                        markedNodes[node] = True
+                    else:
+                        markedNodes[node] = False
+        return markedNodes
+
+    def getShortestPathUsingBFS(self, start: tuple, end: tuple, beliefOfOtherCars):
+        markedNodes = self.modifyWorldGraph(beliefOfOtherCars)
+        queue = []
+        visited = {}
+        prev = {}
+        for node in self.worldGraph.nodes:
+            visited[node] = False
+            prev[node] = None
+        queue.append(start)
+        visited[start] = True
+        iter = 0
+        pathFound = False
+        while queue:
+            iter += 1
+            # print("Paths Computed = ", iter)
+            node = queue.pop(0)
+            if node == end:
+                # print(f"found path to {end}")
+                print("Path Found")
+                pathFound = True
+                break
+            for adjacent in self.worldGraph.edges:
+                if adjacent[0] == node and (adjacent[1] == end or (not visited[adjacent[1]] and not markedNodes[adjacent[1]])):
+                    prev[adjacent[1]] = node
+                    visited[adjacent[1]] = True
+                    queue.append(adjacent[1])
+
+        if pathFound:
+            path = []
+            node = end
+            while node != start:
+                path.append(node)
+                node = prev[node]
+            path.append(start)
+            path.reverse()
+            return path[1]
+        else:
+            return None
+
+    def getShortestPathUsingDijkstra(self, start: tuple, end: tuple, beliefOfOtherCars: list):
+        # initialize
+        markedNodes = self.modifyWorldGraph(beliefOfOtherCars)
+        visited = {}
+        distance = {}
+        prev = {}
+        for node in self.worldGraph.nodes:
+            distance[node] = float('inf')
+            visited[node] = False
+            prev[node] = None
+        distance[start] = 0
+
+        # main loop
+        while (False in visited.values()):
+            # find the node with the smallest distance
+            minDistance = float('inf')
+            for node in self.worldGraph.nodes:
+                if not visited[node] and distance[node] < minDistance:
+                    minDistance = distance[node]
+                    minNode = node
+            visited[minNode] = True
+
+            # update distance
+            for edge in self.worldGraph.edges:
+                if edge[0] == minNode and not visited[edge[1]] and not markedNodes[edge[1]]:
+                    if distance[minNode] + 1 < distance[edge[1]]:
+                        distance[edge[1]] = distance[minNode] + 1
+                        prev[edge[1]] = minNode
+
+        # find the path
+        path = []
+        node = end
+        while node != start:
+            path.append(node)
+            node = prev[node]
+        path.append(start)
+        path.reverse()
+        return path[1]
 
     #######################################################################################
     # Function: Get Next Goal Position
@@ -112,10 +204,14 @@ class IntelligentDriver(Junior):
         - You can explore some files "layout.py", "model.py", "controller.py", etc.
          to find some methods that might help in your implementation. 
         '''
-        goalPos = (0, 0) # next tile 
+        (curr_x, curr_y) = self.getPos() # the current 2D location of the AutoCar (refer util.py to convert it to tile (or grid cell) coordinate)
+        (goal_Col, goal_Row) = self.checkPoints[chkPtsSoFar]
+        print((goal_Col, goal_Row))
+        (next_row, next_col) = self.getShortestPathUsingBFS((util.yToRow(curr_y), util.xToCol(curr_x)), (goal_Row, goal_Col), beliefOfOtherCars)
+        goalPos = (util.colToX(next_col), util.rowToY(next_row)) # next tile
         moveForward = True
 
-        currPos = self.getPos() # the current 2D location of the AutoCar (refer util.py to convert it to tile (or grid cell) coordinate)
+         
         # BEGIN_YOUR_CODE 
 
         # END_YOUR_CODE
@@ -130,6 +226,8 @@ class IntelligentDriver(Junior):
             self.burnInIterations -= 1
             return[]
        
+        time.sleep(0.1)
+
         goalPos, df = self.getNextGoalPos(beliefOfOtherCars, parkedCars, chkPtsSoFar)
         vectorToGoal = goalPos - self.pos
         wheelAngle = -vectorToGoal.get_angle_between(self.dir)
