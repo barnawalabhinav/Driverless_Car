@@ -112,7 +112,7 @@ class IntelligentDriver(Junior):
                 if tile[0]>=0 and tile[1]>=0 and tile[0]<numRows and tile[1]<numCols:
                     if tile not in blockTiles:
                         if tile in markedBlocks:
-                            edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = self.costFactor
+                            edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = self.costFactor/100
                         else:
                             edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = 1
 
@@ -258,8 +258,8 @@ class IntelligentDriver(Junior):
             # path.append(start)
             # path.reverse()
 
-            print(self.waitingSince, end=" ")
-            print(likelihood[node[0]][node[1]])
+            # print(self.waitingSince, end=" ")
+            # print(likelihood[node[0]][node[1]])
 
             if likelihood[node[0]][node[1]] > 0.1/len(beliefOfOtherCars):
                 return node, False
@@ -296,8 +296,8 @@ class IntelligentDriver(Junior):
         (goal_Row, goal_Col) = self.checkPoints[chkPtsSoFar]
         (next_row, next_col), moveForward = self.getShortestPathUsingDijkstra((curr_row, curr_col), (goal_Row, goal_Col), beliefOfOtherCars)
         # print("CHECKPOINT : ", (goal_Row, goal_Col))
-        # print("CURR : ", (curr_row, curr_col))
-        # print("TARGET : ", (next_row, next_col))
+        print("CURR : ", (curr_row, curr_col))
+        print("TARGET : ", (next_row, next_col))
         # if next_row != curr_row and next_col != curr_col:
         #     if (curr_row, next_col) not in self.worldGraph.nodes:
         #         next_row = curr_row
