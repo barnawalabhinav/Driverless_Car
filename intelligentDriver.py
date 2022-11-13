@@ -35,7 +35,8 @@ class IntelligentDriver(Junior):
         self.costFactor = 1000
         # self.worldGraph = None
         self.worldGraph = self.createWorldGraph()
-
+        self.waitingSince = 0
+        self.maxWait = 50
         self.checkPoints = self.layout.getCheckPoints() # a list of single tile locations corresponding to each checkpoint
         self.transProb = util.loadTransProb()
         
@@ -88,6 +89,13 @@ class IntelligentDriver(Junior):
             for c in range(Ecol1, Ecol2):
                 markedBlocks.append((Erow1, c))
                 markedBlocks.append((Erow2-1, c))
+        
+        # for r in range(0, self.layout.getBeliefRows()):
+        #     markedBlocks.append((r, 0))
+        #     markedBlocks.append((r, self.layout.getBeliefCols()-1))
+        # for c in range(0, self.layout.getBeliefCols()):
+        #     markedBlocks.append((0, c))
+        #     markedBlocks.append((self.layout.getBeliefRows()-1, c))
 
         # print(markedBlocks)
 
@@ -104,10 +112,9 @@ class IntelligentDriver(Junior):
                 if tile[0]>=0 and tile[1]>=0 and tile[0]<numRows and tile[1]<numCols:
                     if tile not in blockTiles:
                         if tile in markedBlocks:
-                            edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = self.costFactor/2
+                            edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = self.costFactor
                         else:
                             edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = 1
-                        # adjacentNodes.append(tile)
 
             # for tile in adjacentNodes:
             #     edges.append((node, tile))
@@ -134,7 +141,7 @@ class IntelligentDriver(Junior):
                 for r in rows:
                     for c in cols:
                         if r >= 0 and r < len(grid) and c >= 0 and c < len(grid[row]):
-                            carsLikelihood[r][c] += grid[row][col]/5
+                            carsLikelihood[r][c] += grid[row][col]/9
                             # markedNodes[node] = True
         total = 0
         for row in range(len(carsLikelihood)):
@@ -152,11 +159,11 @@ class IntelligentDriver(Junior):
                 if (row, col) == checkPoint:
                     self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))] = 1
                 elif row >= 0 and col >= 0 and row < self.layout.getBeliefRows() and col < self.layout.getBeliefCols():
-                    self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))] = 1 + max(self.costFactor*carsLikelihood[row][col], self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))])
-
+                    self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))] = max(1 + self.costFactor*carsLikelihood[row][col], self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))])
+        return carsLikelihood
 
     def getShortestPathUsingBFS(self, start: tuple, end: tuple, beliefOfOtherCars):
-        self.modifyWorldGraph(beliefOfOtherCars, end)
+        _ = self.modifyWorldGraph(beliefOfOtherCars, end)
         queue = []
         visited = {}
         prev = {}
@@ -199,9 +206,8 @@ class IntelligentDriver(Junior):
             return start, False
 
     def getShortestPathUsingDijkstra(self, start: tuple, end: tuple, beliefOfOtherCars: list):
-
         # initialize
-        self.modifyWorldGraph(beliefOfOtherCars, end)
+        likelihood = self.modifyWorldGraph(beliefOfOtherCars, end)
         visited = {}
         distance = {}
         prev = {}
@@ -241,7 +247,7 @@ class IntelligentDriver(Junior):
                         distance[ngbr] = minDistance + edgeCost
                         heapq.heappush(priorityQueue, (distance[ngbr], ngbr))
                         prev[ngbr] = minNode
-
+        
         # find the path
         # path = []
         if(pathFound):
@@ -251,6 +257,12 @@ class IntelligentDriver(Junior):
                 node = prev[node]
             # path.append(start)
             # path.reverse()
+
+            print(self.waitingSince, end=" ")
+            print(likelihood[node[0]][node[1]])
+
+            if likelihood[node[0]][node[1]] > 0.1/len(beliefOfOtherCars):
+                return node, False
             return node, True
         else:
             print("Path not found")
@@ -294,9 +306,15 @@ class IntelligentDriver(Junior):
 
         goalPos = (util.colToX(next_col), util.rowToY(next_row)) # next tile
         # goalPos = (util.colToX(12), util.rowToY(6)) # next tile
-         
-        # BEGIN_YOUR_CODE 
 
+        # BEGIN_YOUR_CODE 
+        if not moveForward:
+            self.waitingSince += 1
+            if self.waitingSince > self.maxWait:
+                self.waitingSince = 0
+                moveForward = True
+        else:
+            self.waitingSince = 0
         # END_YOUR_CODE
         return goalPos, moveForward
 
