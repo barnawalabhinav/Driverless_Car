@@ -34,6 +34,7 @@ class IntelligentDriver(Junior):
         self.costFactor = 1000
         # self.worldGraph = None
         self.worldGraph = self.createWorldGraph()
+
         self.checkPoints = self.layout.getCheckPoints() # a list of single tile locations corresponding to each checkpoint
         self.transProb = util.loadTransProb()
         
@@ -101,7 +102,6 @@ class IntelligentDriver(Junior):
             for tile in adjNodes:
                 if tile[0]>=0 and tile[1]>=0 and tile[0]<numRows and tile[1]<numCols:
                     if tile not in blockTiles:
-                        # edges[self.getNodeIdentifier(tile)][self.getNodeIdentifier(node)] = 1
                         if tile in markedBlocks:
                             edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = self.costFactor
                         else:
@@ -151,7 +151,7 @@ class IntelligentDriver(Junior):
                 if (row, col) == checkPoint:
                     self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))] = 1
                 elif row >= 0 and col >= 0 and row < self.layout.getBeliefRows() and col < self.layout.getBeliefCols():
-                    self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))] = max(self.costFactor*carsLikelihood[row][col], self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))])
+                    self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))] = 1 + max(self.costFactor*carsLikelihood[row][col], self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))])
 
 
     def getShortestPathUsingBFS(self, start: tuple, end: tuple, beliefOfOtherCars):
@@ -198,6 +198,7 @@ class IntelligentDriver(Junior):
             return start, False
 
     def getShortestPathUsingDijkstra(self, start: tuple, end: tuple, beliefOfOtherCars: list):
+
         # initialize
         self.modifyWorldGraph(beliefOfOtherCars, end)
         visited = {}
@@ -225,6 +226,7 @@ class IntelligentDriver(Junior):
                 if not visited[node] and distance[node] < minDistance:
                     minDistance = distance[node]
                     minNode = node
+            # print(minNode)
             visited[minNode] = True
             if minNode == end:
                 print("Path Found")
@@ -281,15 +283,16 @@ class IntelligentDriver(Junior):
         (curr_x, curr_y) = self.getPos() # the current 2D location of the AutoCar (refer util.py to convert it to tile (or grid cell) coordinate)
         curr_row = util.yToRow(curr_y)
         curr_col = util.xToCol(curr_x)
-        (goal_Col, goal_Row) = self.checkPoints[chkPtsSoFar]
+        (goal_Row, goal_Col) = self.checkPoints[chkPtsSoFar]
         (next_row, next_col), moveForward = self.getShortestPathUsingDijkstra((curr_row, curr_col), (goal_Row, goal_Col), beliefOfOtherCars)
-        print("CURR : ", (curr_row, curr_col))
-        print("TARGET : ", (next_row, next_col))
-        if next_row != curr_row and next_col != curr_col:
-            if (curr_row, next_col) not in self.worldGraph.nodes:
-                next_row = curr_row
-            elif (next_row, curr_col) not in self.worldGraph.nodes:
-                next_col = curr_col
+        # print("CHECKPOINT : ", (goal_Row, goal_Col))
+        # print("CURR : ", (curr_row, curr_col))
+        # print("TARGET : ", (next_row, next_col))
+        # if next_row != curr_row and next_col != curr_col:
+        #     if (curr_row, next_col) not in self.worldGraph.nodes:
+        #         next_row = curr_row
+        #     elif (next_row, curr_col) not in self.worldGraph.nodes:
+        #         next_col = curr_col
 
         goalPos = (util.colToX(next_col), util.rowToY(next_row)) # next tile
         # goalPos = (util.colToX(12), util.rowToY(6)) # next tile
