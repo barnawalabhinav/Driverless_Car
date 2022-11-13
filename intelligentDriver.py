@@ -5,7 +5,6 @@ purposes. The Driverless Car project was developed at Stanford, primarily by
 Chris Piech (piech@cs.stanford.edu). It was inspired by the Pacman projects.
 '''
 import util
-import time
 import itertools
 from turtle import Vec2D
 from engine.const import Const
@@ -32,10 +31,16 @@ class IntelligentDriver(Junior):
     def __init__(self, layout: Layout):
         self.burnInIterations = 30
         self.layout = layout 
+        self.costFactor = 1000
         # self.worldGraph = None
         self.worldGraph = self.createWorldGraph()
         self.checkPoints = self.layout.getCheckPoints() # a list of single tile locations corresponding to each checkpoint
         self.transProb = util.loadTransProb()
+        
+
+    def getNodeIdentifier(self, node):
+        (x, y) = node
+        return self.layout.getBeliefCols()*x + y
         
     # ONE POSSIBLE WAY OF REPRESENTING THE GRID WORLD. FEEL FREE TO CREATE YOUR OWN REPRESENTATION.
     # Function: Create World Graph
@@ -50,62 +55,107 @@ class IntelligentDriver(Junior):
         # NODES #
         ## each tile represents a node
         nodes = [(x, y) for x, y in itertools.product(range(numRows), range(numCols))]
+
+        # EDGES #
+        # Adjacency Matrix #
+        edges = [[0 for _ in range(len(nodes))] for _ in range(len(nodes))]
         
         # EDGES #
         ## We create an edge between adjacent nodes (nodes at a distance of 1 tile)
-        ## avoid the tiles representing walls or blocks#
+        ## avoid the tiles representing walls or blocks
         ## YOU MAY WANT DIFFERENT NODE CONNECTIONS FOR YOUR OWN IMPLEMENTATION,
         ## FEEL FREE TO MODIFY THE EDGES ACCORDINGLY.
 
         ## Get the tiles corresponding to the blocks (or obstacles):
         blocks = self.layout.getBlockData()
         blockTiles = []
+        markedBlocks = []
         for block in blocks:
             row1, col1, row2, col2 = block[1], block[0], block[3], block[2] 
             # some padding to ensure the AutoCar doesn't crash into the blocks due to its size. (optional)
-            row1, col1, row2, col2 = row1-1, col1-1, row2+1, col2+1
             blockWidth = col2-col1 
             blockHeight = row2-row1 
-
             for i in range(blockHeight):
                 for j in range(blockWidth):
                     blockTile = (row1+i, col1+j)
                     blockTiles.append(blockTile)
+            Erow1, Ecol1, Erow2, Ecol2 = row1-1, col1-1, row2+1, col2+1
+            for r in range(Erow1, Erow2):
+                markedBlocks.append((r, Ecol1))
+                markedBlocks.append((r, Ecol2-1))
+            for c in range(Ecol1, Ecol2):
+                markedBlocks.append((Erow1, c))
+                markedBlocks.append((Erow2-1, c))
+
+        # print(markedBlocks)
 
         ## Remove blockTiles from 'nodes'
         nodes = [x for x in nodes if x not in blockTiles]
 
         for node in nodes:
             x, y = node[0], node[1]
-            adjNodes = [(x, y-1), (x, y+1), (x-1, y), (x+1, y), (x+1,y+1), (x-1,y+1), (x+1,y-1), (x-1,y-1)]
-            
+            # adjNodes = [(x, y-1), (x, y+1), (x-1, y), (x+1, y), (x+1,y+1), (x-1,y+1), (x+1,y-1), (x-1,y-1)]
+            adjNodes = [(x, y-1), (x, y+1), (x-1, y), (x+1, y)]
             # only keep allowed (within boundary) adjacent nodes
-            adjacentNodes = []
+            # adjacentNodes = []
             for tile in adjNodes:
                 if tile[0]>=0 and tile[1]>=0 and tile[0]<numRows and tile[1]<numCols:
                     if tile not in blockTiles:
-                        adjacentNodes.append(tile)
+                        # edges[self.getNodeIdentifier(tile)][self.getNodeIdentifier(node)] = 1
+                        if tile in markedBlocks:
+                            edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = self.costFactor
+                        else:
+                            edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = 1
+                        # adjacentNodes.append(tile)
 
-            for tile in adjacentNodes:
-                edges.append((node, tile))
-                edges.append((tile, node))
+            # for tile in adjacentNodes:
+            #     edges.append((node, tile))
+            #     edges.append((tile, node))
         return Graph(nodes, edges)
 
-    def modifyWorldGraph(self, beliefOfOtherCars: list):
-        markedNodes = {}
+    def modifyWorldGraph(self, beliefOfOtherCars: list, checkPoint):
+        # markedNodes = {}
+        origLikelihood = [[0 for _ in range(self.layout.getBeliefCols())] for _ in range(self.layout.getBeliefRows())]
         for carNum in range(len(beliefOfOtherCars)):
             grid = beliefOfOtherCars[carNum].grid
             for row in range(len(grid)):
                 for col in range(len(grid[row])):
                     node = (row, col)
-                    if grid[row][col] > 0.25:
-                        markedNodes[node] = True
-                    else:
-                        markedNodes[node] = False
-        return markedNodes
+                    origLikelihood[row][col] += grid[row][col]
+        carsLikelihood = origLikelihood.copy()
+        grid = beliefOfOtherCars[carNum].grid
+        for row in range(len(origLikelihood)):
+            for col in range(len(origLikelihood[row])):
+                node = (row, col)
+                rows = [row, row-1, row+1]
+                cols = [col, col-1, col+1]
+                # markedNodes[node] = False
+                for r in rows:
+                    for c in cols:
+                        if r >= 0 and r < len(grid) and c >= 0 and c < len(grid[row]):
+                            carsLikelihood[r][c] += grid[row][col]/9
+                            # markedNodes[node] = True
+        total = 0
+        for row in range(len(carsLikelihood)):
+            for col in range(len(carsLikelihood[row])):
+                total += carsLikelihood[row][col]
+        for row in range(len(carsLikelihood)):
+            for col in range(len(carsLikelihood[row])):
+                carsLikelihood[row][col] /= total
+        
+        for node in self.worldGraph.nodes:
+            (x, y) = node
+            # adjNodes = [(x, y-1), (x, y+1), (x-1, y), (x+1, y), (x+1,y+1), (x-1,y+1), (x+1,y-1), (x-1,y-1)]
+            adjNodes = [(x, y-1), (x, y+1), (x-1, y), (x+1, y)]
+            for (row, col) in adjNodes:
+                if (row, col) == checkPoint:
+                    self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))] = 1
+                elif row >= 0 and col >= 0 and row < self.layout.getBeliefRows() and col < self.layout.getBeliefCols():
+                    self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))] = max(self.costFactor*carsLikelihood[row][col], self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))])
+
 
     def getShortestPathUsingBFS(self, start: tuple, end: tuple, beliefOfOtherCars):
-        markedNodes = self.modifyWorldGraph(beliefOfOtherCars)
+        self.modifyWorldGraph(beliefOfOtherCars, end)
         queue = []
         visited = {}
         prev = {}
@@ -125,62 +175,86 @@ class IntelligentDriver(Junior):
                 print("Path Found")
                 pathFound = True
                 break
-            for adjacent in self.worldGraph.edges:
-                if adjacent[0] == node and (adjacent[1] == end or (not visited[adjacent[1]] and not markedNodes[adjacent[1]])):
-                    prev[adjacent[1]] = node
-                    visited[adjacent[1]] = True
-                    queue.append(adjacent[1])
+            for ngbr in self.worldGraph.nodes:
+                if self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(ngbr)] > 0 and not visited[ngbr]:
+                    prev[ngbr] = node
+                    visited[ngbr] = True
+                    if ngbr == end:
+                        # print(f"found path to {end}")
+                        print("Path Found")
+                        pathFound = True
+                        break
+                    queue.append(ngbr)
+            if pathFound:
+                break
 
         if pathFound:
-            path = []
             node = end
-            while node != start:
-                path.append(node)
+            while prev[node] != start:
                 node = prev[node]
-            path.append(start)
-            path.reverse()
-            return path[1]
+            return node, True
         else:
-            return None
+            print("Path not found")
+            return start, False
 
     def getShortestPathUsingDijkstra(self, start: tuple, end: tuple, beliefOfOtherCars: list):
         # initialize
-        markedNodes = self.modifyWorldGraph(beliefOfOtherCars)
+        self.modifyWorldGraph(beliefOfOtherCars, end)
         visited = {}
         distance = {}
         prev = {}
         for node in self.worldGraph.nodes:
             distance[node] = float('inf')
-            visited[node] = False
             prev[node] = None
+            visited[node] = False
         distance[start] = 0
-
+        pathFound = False
         # main loop
         while (False in visited.values()):
             # find the node with the smallest distance
             minDistance = float('inf')
+            minNode = start
+            # for node in visited:
+            #     if distance[node] < minDistance:
+            #         minDistance = distance[node]
+            #         minNode = node
+            # print(f'{minNode}')
+
+
             for node in self.worldGraph.nodes:
                 if not visited[node] and distance[node] < minDistance:
                     minDistance = distance[node]
                     minNode = node
             visited[minNode] = True
-
+            if minNode == end:
+                print("Path Found")
+                pathFound = True
+                break
+            
+            # visited.append(minNode)
             # update distance
-            for edge in self.worldGraph.edges:
-                if edge[0] == minNode and not visited[edge[1]] and not markedNodes[edge[1]]:
-                    if distance[minNode] + 1 < distance[edge[1]]:
-                        distance[edge[1]] = distance[minNode] + 1
-                        prev[edge[1]] = minNode
+            for ngbr in self.worldGraph.nodes:
+                edgeCost = self.worldGraph.edges[self.getNodeIdentifier(minNode)][self.getNodeIdentifier(ngbr)]
+                if edgeCost > 0 and not visited[ngbr]:
+                    # if edgeCost > 50:
+                    #     print(f"{edgeCost} between {minNode} and {ngbr}")
+                    if distance[minNode] + edgeCost < distance[ngbr]:
+                               distance[ngbr] = distance[minNode] + edgeCost
+                               prev[ngbr] = minNode
 
         # find the path
-        path = []
-        node = end
-        while node != start:
-            path.append(node)
-            node = prev[node]
-        path.append(start)
-        path.reverse()
-        return path[1]
+        # path = []
+        if(pathFound):
+            node = end
+            while prev[node] != start:
+                # path.append(node)
+                node = prev[node]
+            # path.append(start)
+            # path.reverse()
+            return node, True
+        else:
+            print("Path not found")
+            return start, False
 
     #######################################################################################
     # Function: Get Next Goal Position
@@ -205,12 +279,20 @@ class IntelligentDriver(Junior):
          to find some methods that might help in your implementation. 
         '''
         (curr_x, curr_y) = self.getPos() # the current 2D location of the AutoCar (refer util.py to convert it to tile (or grid cell) coordinate)
+        curr_row = util.yToRow(curr_y)
+        curr_col = util.xToCol(curr_x)
         (goal_Col, goal_Row) = self.checkPoints[chkPtsSoFar]
-        print((goal_Col, goal_Row))
-        (next_row, next_col) = self.getShortestPathUsingBFS((util.yToRow(curr_y), util.xToCol(curr_x)), (goal_Row, goal_Col), beliefOfOtherCars)
-        goalPos = (util.colToX(next_col), util.rowToY(next_row)) # next tile
-        moveForward = True
+        (next_row, next_col), moveForward = self.getShortestPathUsingDijkstra((curr_row, curr_col), (goal_Row, goal_Col), beliefOfOtherCars)
+        print("CURR : ", (curr_row, curr_col))
+        print("TARGET : ", (next_row, next_col))
+        if next_row != curr_row and next_col != curr_col:
+            if (curr_row, next_col) not in self.worldGraph.nodes:
+                next_row = curr_row
+            elif (next_row, curr_col) not in self.worldGraph.nodes:
+                next_col = curr_col
 
+        goalPos = (util.colToX(next_col), util.rowToY(next_row)) # next tile
+        # goalPos = (util.colToX(12), util.rowToY(6)) # next tile
          
         # BEGIN_YOUR_CODE 
 
@@ -225,8 +307,6 @@ class IntelligentDriver(Junior):
         if self.burnInIterations > 0:
             self.burnInIterations -= 1
             return[]
-       
-        time.sleep(0.1)
 
         goalPos, df = self.getNextGoalPos(beliefOfOtherCars, parkedCars, chkPtsSoFar)
         vectorToGoal = goalPos - self.pos
