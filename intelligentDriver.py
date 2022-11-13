@@ -5,6 +5,7 @@ purposes. The Driverless Car project was developed at Stanford, primarily by
 Chris Piech (piech@cs.stanford.edu). It was inspired by the Pacman projects.
 '''
 import util
+import heapq
 import itertools
 from turtle import Vec2D
 from engine.const import Const
@@ -103,7 +104,7 @@ class IntelligentDriver(Junior):
                 if tile[0]>=0 and tile[1]>=0 and tile[0]<numRows and tile[1]<numCols:
                     if tile not in blockTiles:
                         if tile in markedBlocks:
-                            edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = self.costFactor
+                            edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = self.costFactor/2
                         else:
                             edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = 1
                         # adjacentNodes.append(tile)
@@ -133,7 +134,7 @@ class IntelligentDriver(Junior):
                 for r in rows:
                     for c in cols:
                         if r >= 0 and r < len(grid) and c >= 0 and c < len(grid[row]):
-                            carsLikelihood[r][c] += grid[row][col]/9
+                            carsLikelihood[r][c] += grid[row][col]/5
                             # markedNodes[node] = True
         total = 0
         for row in range(len(carsLikelihood)):
@@ -210,23 +211,19 @@ class IntelligentDriver(Junior):
             visited[node] = False
         distance[start] = 0
         pathFound = False
+        priorityQueue = [(0, start)]
         # main loop
         while (False in visited.values()):
-            # find the node with the smallest distance
-            minDistance = float('inf')
-            minNode = start
-            # for node in visited:
-            #     if distance[node] < minDistance:
+            # minDistance = float('inf')
+            # minNode = start
+            minDistance, minNode = heapq.heappop(priorityQueue)
+            
+            # for node in self.worldGraph.nodes:
+            #     if not visited[node] and distance[node] < minDistance:
             #         minDistance = distance[node]
             #         minNode = node
-            # print(f'{minNode}')
-
-
-            for node in self.worldGraph.nodes:
-                if not visited[node] and distance[node] < minDistance:
-                    minDistance = distance[node]
-                    minNode = node
             # print(minNode)
+            
             visited[minNode] = True
             if minNode == end:
                 print("Path Found")
@@ -240,9 +237,10 @@ class IntelligentDriver(Junior):
                 if edgeCost > 0 and not visited[ngbr]:
                     # if edgeCost > 50:
                     #     print(f"{edgeCost} between {minNode} and {ngbr}")
-                    if distance[minNode] + edgeCost < distance[ngbr]:
-                               distance[ngbr] = distance[minNode] + edgeCost
-                               prev[ngbr] = minNode
+                    if minDistance + edgeCost < distance[ngbr]:
+                        distance[ngbr] = minDistance + edgeCost
+                        heapq.heappush(priorityQueue, (distance[ngbr], ngbr))
+                        prev[ngbr] = minNode
 
         # find the path
         # path = []
