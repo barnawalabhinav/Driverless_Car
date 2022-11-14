@@ -37,14 +37,22 @@ class IntelligentDriver(Junior):
         self.paddedBlocks = []
         self.worldGraph = self.createWorldGraph()
         self.waitingSince = 0
-        self.maxWait = 20
+        self.maxWait = 10
         self.checkPoints = self.layout.getCheckPoints() # a list of single tile locations corresponding to each checkpoint
         self.transProb = util.loadTransProb()
         
-
     def getNodeIdentifier(self, node):
         (x, y) = node
         return self.layout.getBeliefCols()*x + y
+
+    def getContours(self, pad_block):
+        x, y = pad_block[0], pad_block[1]
+        adjNodes = [(x, y-1), (x, y+1), (x-1, y), (x+1, y)]
+        contour = []
+        for tile in adjNodes:
+            if tile not in self.worldGraph.nodes:
+                contour.append(tile)
+        return contour
         
     # ONE POSSIBLE WAY OF REPRESENTING THE GRID WORLD. FEEL FREE TO CREATE YOUR OWN REPRESENTATION.
     # Function: Create World Graph
@@ -73,7 +81,6 @@ class IntelligentDriver(Junior):
         ## Get the tiles corresponding to the blocks (or obstacles):
         blocks = self.layout.getBlockData()
         blockTiles = []
-        markedBlocks = []
         for block in blocks:
             row1, col1, row2, col2 = block[1], block[0], block[3], block[2] 
             # some padding to ensure the AutoCar doesn't crash into the blocks due to its size. (optional)
@@ -85,13 +92,12 @@ class IntelligentDriver(Junior):
                     blockTiles.append(blockTile)
             Erow1, Ecol1, Erow2, Ecol2 = row1-1, col1-1, row2+1, col2+1
             for r in range(row1, row2):
-                markedBlocks.append((r, Ecol1))
-                markedBlocks.append((r, Ecol2-1))
+                self.paddedBlocks.append((r, Ecol1))
+                self.paddedBlocks.append((r, Ecol2-1))
             for c in range(col1, col2):
-                markedBlocks.append((Erow1, c))
-                markedBlocks.append((Erow2-1, c))
+                self.paddedBlocks.append((Erow1, c))
+                self.paddedBlocks.append((Erow2-1, c))
 
-        self.paddedBlocks = markedBlocks.copy()
         for r in range(0, self.layout.getBeliefRows()):
             self.paddedBlocks.append((r, 0))
             self.paddedBlocks.append((r, self.layout.getBeliefCols()-1))
@@ -99,33 +105,24 @@ class IntelligentDriver(Junior):
             self.paddedBlocks.append((0, c))
             self.paddedBlocks.append((self.layout.getBeliefRows()-1, c))
 
-        markedBlocks = self.paddedBlocks.copy()
-
-        # print(markedBlocks)
         ## Remove blockTiles from 'nodes'
         nodes = [x for x in nodes if x not in blockTiles]
 
         for node in nodes:
             x, y = node[0], node[1]
-            # adjNodes = [(x, y-1), (x, y+1), (x-1, y), (x+1, y), (x+1,y+1), (x-1,y+1), (x+1,y-1), (x-1,y-1)]
             adjNodes = [(x, y-1), (x, y+1), (x-1, y), (x+1, y)]
             # only keep allowed (within boundary) adjacent nodes
-            # adjacentNodes = []
             for tile in adjNodes:
                 if tile[0]>=0 and tile[1]>=0 and tile[0]<numRows and tile[1]<numCols:
                     if tile not in blockTiles:
-                        if tile in markedBlocks:
-                            edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = self.costFactor/10
+                        if tile in self.paddedBlocks:
+                            edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] += self.costFactor/10
                         else:
                             edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = 1
 
-            # for tile in adjacentNodes:
-            #     edges.append((node, tile))
-            #     edges.append((tile, node))
         return Graph(nodes, edges)
 
     def modifyWorldGraph(self, beliefOfOtherCars: list, checkPoint):
-        # markedNodes = {}
         origLikelihood = [[0 for _ in range(self.layout.getBeliefCols())] for _ in range(self.layout.getBeliefRows())]
         for carNum in range(len(beliefOfOtherCars)):
             grid = beliefOfOtherCars[carNum].grid
@@ -140,12 +137,10 @@ class IntelligentDriver(Junior):
                 node = (row, col)
                 rows = [row, row-1, row+1]
                 cols = [col, col-1, col+1]
-                # markedNodes[node] = False
                 for r in rows:
                     for c in cols:
                         if r >= 0 and r < len(grid) and c >= 0 and c < len(grid[row]):
                             carsLikelihood[r][c] += grid[row][col]/5
-                            # markedNodes[node] = True
         total = 0
         for row in range(len(carsLikelihood)):
             for col in range(len(carsLikelihood[row])):
@@ -156,57 +151,47 @@ class IntelligentDriver(Junior):
         
         for node in self.worldGraph.nodes:
             (x, y) = node
-            # adjNodes = [(x, y-1), (x, y+1), (x-1, y), (x+1, y), (x+1,y+1), (x-1,y+1), (x+1,y-1), (x-1,y-1)]
             adjNodes = [(x, y-1), (x, y+1), (x-1, y), (x+1, y)]
             for (row, col) in adjNodes:
-                if (row, col) == checkPoint:
-                    self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))] = 1
-                elif row >= 0 and col >= 0 and row < self.layout.getBeliefRows() and col < self.layout.getBeliefCols():
+                if row >= 0 and col >= 0 and row < self.layout.getBeliefRows() and col < self.layout.getBeliefCols():
                     self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))] = max(1 + self.costFactor*carsLikelihood[row][col], self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier((row, col))])
         return carsLikelihood
 
-    def getShortestPathUsingBFS(self, start: tuple, end: tuple, beliefOfOtherCars):
-        _ = self.modifyWorldGraph(beliefOfOtherCars, end)
-        queue = []
-        visited = {}
-        prev = {}
-        for node in self.worldGraph.nodes:
-            visited[node] = False
-            prev[node] = None
-        queue.append(start)
-        visited[start] = True
-        iter = 0
-        pathFound = False
-        while queue:
-            iter += 1
-            # print("Paths Computed = ", iter)
-            node = queue.pop(0)
-            if node == end:
-                # print(f"found path to {end}")
-                print("Path Found")
-                pathFound = True
-                break
-            for ngbr in self.worldGraph.nodes:
-                if self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(ngbr)] > 0 and not visited[ngbr]:
-                    prev[ngbr] = node
-                    visited[ngbr] = True
-                    if ngbr == end:
-                        # print(f"found path to {end}")
-                        print("Path Found")
-                        pathFound = True
-                        break
-                    queue.append(ngbr)
-            if pathFound:
-                break
-
-        if pathFound:
-            node = end
-            while prev[node] != start:
-                node = prev[node]
-            return node, True
-        else:
-            print("Path not found")
-            return start, False
+    # def getShortestPathUsingBFS(self, start: tuple, end: tuple, beliefOfOtherCars):
+    #     _ = self.modifyWorldGraph(beliefOfOtherCars, end)
+    #     queue = []
+    #     visited = {}
+    #     prev = {}
+    #     for node in self.worldGraph.nodes:
+    #         visited[node] = False
+    #         prev[node] = None
+    #     queue.append(start)
+    #     visited[start] = True
+    #     iter = 0
+    #     pathFound = False
+    #     while queue:
+    #         iter += 1
+    #         node = queue.pop(0)
+    #         if node == end:
+    #             pathFound = True
+    #             break
+    #         for ngbr in self.worldGraph.nodes:
+    #             if self.worldGraph.edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(ngbr)] > 0 and not visited[ngbr]:
+    #                 prev[ngbr] = node
+    #                 visited[ngbr] = True
+    #                 if ngbr == end:
+    #                     pathFound = True
+    #                     break
+    #                 queue.append(ngbr)
+    #         if pathFound:
+    #             break
+    #     if pathFound:
+    #         node = end
+    #         while prev[node] != start:
+    #             node = prev[node]
+    #         return node, True
+    #     else:
+    #         return start, False
 
     def getShortestPathUsingDijkstra(self, start: tuple, end: tuple, beliefOfOtherCars: list):
         # initialize
@@ -221,36 +206,28 @@ class IntelligentDriver(Junior):
         distance[start] = 0
         pathFound = False
         priorityQueue = [(0, start)]
+        
         # main loop
         while (False in visited.values()):
-            # minDistance = float('inf')
-            # minNode = start
             minDistance, minNode = heapq.heappop(priorityQueue)
-            
-            # for node in self.worldGraph.nodes:
-            #     if not visited[node] and distance[node] < minDistance:
-            #         minDistance = distance[node]
-            #         minNode = node
-            # print(minNode)
-            
+            for node in self.worldGraph.nodes:
+                if not visited[node] and distance[node] < minDistance:
+                    minDistance = distance[node]
+                    minNode = node
             visited[minNode] = True
             if minNode == end:
-                # print("Path Found")
                 pathFound = True
                 break
             
-            # visited.append(minNode)
             # update distance
             for ngbr in self.worldGraph.nodes:
                 edgeCost = self.worldGraph.edges[self.getNodeIdentifier(minNode)][self.getNodeIdentifier(ngbr)]
                 if edgeCost > 0 and not visited[ngbr]:
-                    # if edgeCost > 50:
-                    #     print(f"{edgeCost} between {minNode} and {ngbr}")
                     if minDistance + edgeCost < distance[ngbr]:
                         distance[ngbr] = minDistance + edgeCost
                         heapq.heappush(priorityQueue, (distance[ngbr], ngbr))
                         prev[ngbr] = minNode
-        
+
         # find the path
         if(pathFound):
             node = end
@@ -258,21 +235,25 @@ class IntelligentDriver(Junior):
             while prev[node] != start:
                 nextNode = node
                 node = prev[node]
-            # print(start, end=" ")
-            # print(node, end=" ")
-            # print(nextNode)
+            x_offset = 0
+            y_offset = 0
             if node in self.paddedBlocks:
-                # print("Node Present!")
-                if nextNode[0] != start[0] and nextNode[1] != start[1]:
-                    # print("Node Updated!")
-                    node = nextNode
+                blockedAreas = self.getContours(node)
+                for block in blockedAreas:
+                    if (node[0] == block[0]):
+                        x_offset = (node[1] - block[1])*Car.LENGTH*0.5
+                    elif (node[1] == block[1]):
+                        y_offset = (node[0] - block[0])*Car.LENGTH*0.5
 
-            if likelihood[node[0]][node[1]] > 0.1/len(beliefOfOtherCars):
-                return node, False
-            return node, True
+            if likelihood[node[0]][node[1]] > 0.1/len(beliefOfOtherCars) or node in self.checkPoints or node in self.paddedBlocks:
+                if likelihood[node[0]][node[1]]*100 > 10:
+                    self.maxWait = likelihood[node[0]][node[1]]*100
+                else:
+                    self.maxWait = 10
+                return node, False, (x_offset, y_offset)
+            return node, True, (x_offset, y_offset)
         else:
-            # print("Path not found")
-            return start, False
+            return start, False, (x_offset, y_offset)
 
     def updateBeliefOfOtherCars(self, beliefOfOtherCars: list, parkedCars: list):
         for carId in range(len(beliefOfOtherCars)):
@@ -342,19 +323,9 @@ class IntelligentDriver(Junior):
         (goal_Row, goal_Col) = self.checkPoints[chkPtsSoFar]
 
         self.updateBeliefOfOtherCars(beliefOfOtherCars, parkedCars)
-
-        (next_row, next_col), moveForward = self.getShortestPathUsingDijkstra((curr_row, curr_col), (goal_Row, goal_Col), beliefOfOtherCars)
-        # print("CHECKPOINT : ", (goal_Row, goal_Col))
-        # print("CURR : ", (curr_row, curr_col))
-        # print("TARGET : ", (next_row, next_col))
-        # if next_row != curr_row and next_col != curr_col:
-        #     if (curr_row, next_col) not in self.worldGraph.nodes:
-        #         next_row = curr_row
-        #     elif (next_row, curr_col) not in self.worldGraph.nodes:
-        #         next_col = curr_col
-
-        goalPos = (util.colToX(next_col), util.rowToY(next_row)) # next tile
-        # goalPos = (util.colToX(12), util.rowToY(6)) # next tile
+        (next_row, next_col), moveForward, offset = self.getShortestPathUsingDijkstra((curr_row, curr_col), (goal_Row, goal_Col), beliefOfOtherCars)
+            
+        goalPos = (util.colToX(next_col) + offset[0], util.rowToY(next_row) + offset[1]) # next tile
 
         # BEGIN_YOUR_CODE 
         if not moveForward:
@@ -364,6 +335,10 @@ class IntelligentDriver(Junior):
                 moveForward = True
         else:
             self.waitingSince = 0
+        
+        if not moveForward:
+            print("Waiting!")
+
         # END_YOUR_CODE
         return goalPos, moveForward
 
@@ -386,5 +361,3 @@ class IntelligentDriver(Junior):
         if driveForward:
             actions[Car.DRIVE_FORWARD] = 1.0
         return actions
-    
-    
