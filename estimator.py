@@ -77,7 +77,7 @@ class Estimator(object):
                     # moving_prob[4] = 1
                 else:
                     moving_prob = [prob/total for prob in moving_prob]
-                    particles[i] = random.choices([x-1+(y-1)*cols, x-1+y*cols, x-1+(y+1)*cols, x+(y-1)*cols, x+y*cols, x+(y+1)*cols, x+1+(y-1)*cols, x+1+y*cols, x+1+(y+1)*cols], moving_prob, k=1)[0]                
+                    particles[i] = random.choices([x-1+(y-1)*cols, x-1+y*cols, x-1+(y+1)*cols, x+(y-1)*cols, x+y*cols, x+(y+1)*cols, x+1+(y-1)*cols, x+1+y*cols, x+1+(y+1)*cols], moving_prob, k=1)[0]
                         # [y-1+(x-1)*cols, y+(x-1)*cols, y+1+(x-1)*cols, y-1+x*cols, y+x*cols, y+1+x*cols, y-1+(x+1)*cols, y+(x+1)*cols, y+1+(x+1)*cols], moving_prob, k=1)[0]
                     y = util.rowToY(y)
                     x = util.colToX(x)

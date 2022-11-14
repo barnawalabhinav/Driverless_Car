@@ -7,6 +7,7 @@ Chris Piech (piech@cs.stanford.edu). It was inspired by the Pacman projects.
 import util
 import heapq
 import itertools
+import random
 from turtle import Vec2D
 from engine.const import Const
 from engine.vector import Vec2d
@@ -33,10 +34,10 @@ class IntelligentDriver(Junior):
         self.burnInIterations = 30
         self.layout = layout 
         self.costFactor = 1000
-        # self.worldGraph = None
+        self.paddedBlocks = []
         self.worldGraph = self.createWorldGraph()
         self.waitingSince = 0
-        self.maxWait = 50
+        self.maxWait = 20
         self.checkPoints = self.layout.getCheckPoints() # a list of single tile locations corresponding to each checkpoint
         self.transProb = util.loadTransProb()
         
@@ -83,22 +84,24 @@ class IntelligentDriver(Junior):
                     blockTile = (row1+i, col1+j)
                     blockTiles.append(blockTile)
             Erow1, Ecol1, Erow2, Ecol2 = row1-1, col1-1, row2+1, col2+1
-            for r in range(Erow1, Erow2):
+            for r in range(row1, row2):
                 markedBlocks.append((r, Ecol1))
                 markedBlocks.append((r, Ecol2-1))
-            for c in range(Ecol1, Ecol2):
+            for c in range(col1, col2):
                 markedBlocks.append((Erow1, c))
                 markedBlocks.append((Erow2-1, c))
-        
-        # for r in range(0, self.layout.getBeliefRows()):
-        #     markedBlocks.append((r, 0))
-        #     markedBlocks.append((r, self.layout.getBeliefCols()-1))
-        # for c in range(0, self.layout.getBeliefCols()):
-        #     markedBlocks.append((0, c))
-        #     markedBlocks.append((self.layout.getBeliefRows()-1, c))
+
+        self.paddedBlocks = markedBlocks.copy()
+        for r in range(0, self.layout.getBeliefRows()):
+            self.paddedBlocks.append((r, 0))
+            self.paddedBlocks.append((r, self.layout.getBeliefCols()-1))
+        for c in range(0, self.layout.getBeliefCols()):
+            self.paddedBlocks.append((0, c))
+            self.paddedBlocks.append((self.layout.getBeliefRows()-1, c))
+
+        markedBlocks = self.paddedBlocks.copy()
 
         # print(markedBlocks)
-
         ## Remove blockTiles from 'nodes'
         nodes = [x for x in nodes if x not in blockTiles]
 
@@ -112,7 +115,7 @@ class IntelligentDriver(Junior):
                 if tile[0]>=0 and tile[1]>=0 and tile[0]<numRows and tile[1]<numCols:
                     if tile not in blockTiles:
                         if tile in markedBlocks:
-                            edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = self.costFactor/100
+                            edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = self.costFactor/10
                         else:
                             edges[self.getNodeIdentifier(node)][self.getNodeIdentifier(tile)] = 1
 
@@ -141,7 +144,7 @@ class IntelligentDriver(Junior):
                 for r in rows:
                     for c in cols:
                         if r >= 0 and r < len(grid) and c >= 0 and c < len(grid[row]):
-                            carsLikelihood[r][c] += grid[row][col]/9
+                            carsLikelihood[r][c] += grid[row][col]/5
                             # markedNodes[node] = True
         total = 0
         for row in range(len(carsLikelihood)):
@@ -232,7 +235,7 @@ class IntelligentDriver(Junior):
             
             visited[minNode] = True
             if minNode == end:
-                print("Path Found")
+                # print("Path Found")
                 pathFound = True
                 break
             
@@ -249,24 +252,67 @@ class IntelligentDriver(Junior):
                         prev[ngbr] = minNode
         
         # find the path
-        # path = []
         if(pathFound):
             node = end
+            nextNode = prev[node]
             while prev[node] != start:
-                # path.append(node)
+                nextNode = node
                 node = prev[node]
-            # path.append(start)
-            # path.reverse()
-
-            # print(self.waitingSince, end=" ")
-            # print(likelihood[node[0]][node[1]])
+            # print(start, end=" ")
+            # print(node, end=" ")
+            # print(nextNode)
+            if node in self.paddedBlocks:
+                # print("Node Present!")
+                if nextNode[0] != start[0] and nextNode[1] != start[1]:
+                    # print("Node Updated!")
+                    node = nextNode
 
             if likelihood[node[0]][node[1]] > 0.1/len(beliefOfOtherCars):
                 return node, False
             return node, True
         else:
-            print("Path not found")
+            # print("Path not found")
             return start, False
+
+    def updateBeliefOfOtherCars(self, beliefOfOtherCars: list, parkedCars: list):
+        for carId in range(len(beliefOfOtherCars)):
+            belief = beliefOfOtherCars[carId]
+            if not parkedCars[carId]:
+                rows = belief.numRows
+                cols = belief.numCols      
+                init_weights = [belief.grid[i][j] for i in range(rows) for j in range(cols)]
+                init_particles = [i*cols + j for i in range(rows) for j in range(cols)]
+                particles = random.choices(init_particles, init_weights, k=len(init_particles))
+                i = 0
+                while (i < len(particles)):
+                    particle = particles[i]
+                    y = particle // cols
+                    x = particle % cols
+                    moving_prob = [ self.transProb[((y, x), (y-1, x-1))] if ((y, x), (y-1, x-1)) in self.transProb else 0,
+                                    self.transProb[((y, x), (y, x-1))] if ((y, x), (y, x-1)) in self.transProb else 0,
+                                    self.transProb[((y, x), (y+1, x-1))] if ((y, x), (y+1, x-1)) in self.transProb else 0,
+                                    self.transProb[((y, x), (y-1, x))] if ((y, x), (y-1, x)) in self.transProb else 0,
+                                    self.transProb[((y, x), (y, x))] if ((y, x), (y, x)) in self.transProb else 0,
+                                    self.transProb[((y, x), (y+1, x))] if ((y, x), (y+1, x)) in self.transProb else 0,
+                                    self.transProb[((y, x), (y-1, x+1))] if ((y, x), (y-1, x+1)) in self.transProb else 0,
+                                    self.transProb[((y, x), (y, x+1))] if ((y, x), (y, x+1)) in self.transProb else 0,
+                                    self.transProb[((y, x), (y+1, x+1))] if ((y, x), (y+1, x+1)) in self.transProb else 0]
+
+                    total = sum(moving_prob)
+                    if total == 0:
+                        particles.remove(particle)
+                    else:
+                        moving_prob = [prob/total for prob in moving_prob]
+                        particles[i] = random.choices([x-1+(y-1)*cols, x-1+y*cols, x-1+(y+1)*cols, x+(y-1)*cols, x+y*cols, x+(y+1)*cols, x+1+(y-1)*cols, x+1+y*cols, x+1+(y+1)*cols], moving_prob, k=1)[0]
+                        i += 1
+                for r in range(rows):
+                    for c in range(cols):
+                        belief.setProb(r, c, 0)
+                for particle in particles:
+                    r = particle // cols
+                    c = particle % cols
+                    belief.addProb(r, c, 1)
+                belief.normalize()
 
     #######################################################################################
     # Function: Get Next Goal Position
@@ -294,10 +340,13 @@ class IntelligentDriver(Junior):
         curr_row = util.yToRow(curr_y)
         curr_col = util.xToCol(curr_x)
         (goal_Row, goal_Col) = self.checkPoints[chkPtsSoFar]
+
+        self.updateBeliefOfOtherCars(beliefOfOtherCars, parkedCars)
+
         (next_row, next_col), moveForward = self.getShortestPathUsingDijkstra((curr_row, curr_col), (goal_Row, goal_Col), beliefOfOtherCars)
         # print("CHECKPOINT : ", (goal_Row, goal_Col))
-        print("CURR : ", (curr_row, curr_col))
-        print("TARGET : ", (next_row, next_col))
+        # print("CURR : ", (curr_row, curr_col))
+        # print("TARGET : ", (next_row, next_col))
         # if next_row != curr_row and next_col != curr_col:
         #     if (curr_row, next_col) not in self.worldGraph.nodes:
         #         next_row = curr_row
