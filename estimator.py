@@ -8,7 +8,6 @@ from engine.const import Const
 # ----------------------
 # Maintain and update a belief distribution over the probability of a car being in a tile.
 
-
 class Estimator(object):
     def __init__(self, numRows: int, numCols: int):
         self.belief = util.Belief(numRows, numCols)
@@ -69,16 +68,9 @@ class Estimator(object):
                 total = sum(moving_prob)
                 if total == 0:
                     particles.remove(particle)
-                    # for i in [-1, 0, 1]:
-                    #     for j in [-1, 0, 1]:
-                    #         if x+i >= 0 and x+i < cols and y+j >= 0 and y+j < rows:
-                    #             moving_prob[(i+1)*3+(j+1)] = 1
-                    #             total += 1
-                    # moving_prob[4] = 1
                 else:
                     moving_prob = [prob/total for prob in moving_prob]
                     particles[i] = random.choices([x-1+(y-1)*cols, x-1+y*cols, x-1+(y+1)*cols, x+(y-1)*cols, x+y*cols, x+(y+1)*cols, x+1+(y-1)*cols, x+1+y*cols, x+1+(y+1)*cols], moving_prob, k=1)[0]
-                        # [y-1+(x-1)*cols, y+(x-1)*cols, y+1+(x-1)*cols, y-1+x*cols, y+x*cols, y+1+x*cols, y-1+(x+1)*cols, y+(x+1)*cols, y+1+(x+1)*cols], moving_prob, k=1)[0]
                     y = util.rowToY(y)
                     x = util.colToX(x)
                     estimated_dist = math.sqrt((x-posX) * (x-posX) + (y-posY) * (y-posY))
@@ -91,9 +83,6 @@ class Estimator(object):
                 particle = particles[i]
                 y = particle // cols
                 x = particle % cols
-                # if ((y, x), (y, x)) not in self.transProb or self.transProb[((y, x), (y, x))] == 0:
-                #     particles.remove(particle)
-                # else:
                 y = util.rowToY(y)
                 x = util.colToX(x)
                 estimated_dist = math.sqrt((x-posX) * (x-posX) + (y-posY) * (y-posY))
